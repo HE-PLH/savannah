@@ -1,0 +1,46 @@
+name: Backend quality
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-dev.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: python -m pip install -r requirements-dev.txt
+      - run: npm ci
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - name: Check Django deployment settings
+        run: python manage.py check --deploy
+        env:
+          DJANGO_SECRET_KEY: pipeline-only-secret-with-at-least-fifty-random-looking-characters-12345
+          DJANGO_DEBUG: "false"
+          COOKIE_SECURE: "true"
+          SECURE_SSL_REDIRECT: "true"
+          SECURE_HSTS_SECONDS: "31536000"
+      - name: Validate commit messages
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            npx commitlint --from "${{ github.event.pull_request.base.sha }}" --to "${{ github.event.pull_request.head.sha }}" --verbose
+          elif git rev-parse HEAD^ >/dev/null 2>&1; then
+            npx commitlint --from HEAD^ --to HEAD --verbose
+          else
+            git log -1 --pretty=%B | npx commitlint --verbose
+          fi

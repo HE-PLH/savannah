@@ -1,0 +1,22 @@
+{
+  "name": "clinic-stock-backend-tooling",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "prepare": "husky",
+    "format": "ruff format .",
+    "format:check": "ruff format --check .",
+    "lint": "ruff check .",
+    "typecheck": "mypy .",
+    "test": "pytest .",
+    "check": "python manage.py check",
+    "commitlint": "commitlint"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^19.8.1",
+    "@commitlint/config-conventional": "^19.8.1",
+    "husky": "^9.1.7"
+  }
+}
