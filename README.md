@@ -10,9 +10,11 @@ Each override contains `clinic_id`, `product_id`, `stock`, and timestamps. The c
 
 ## Fetching and failure behavior
 
-DummyJSON catalogue calls have a ten-second timeout. Network failures become a recoverable 503-style API error and upstream server failures are normalized. `DUMMYJSON_DELAY_MS` accepts 0–5000 to exercise slow paths. The frontend requests a one-minute session at login so expiry can be exercised during testing; otherwise session lifetime defaults to `SESSION_COOKIE_AGE`. When it expires, the frontend returns to sign-in without replacing the current route.
+DummyJSON catalogue calls have a ten-second timeout. Network failures become a recoverable 503-style API error and upstream server failures are normalized. `DUMMYJSON_DELAY_MS` accepts 0–5000 to exercise slow paths. Product list requests accept up to 200 rows so the browser can virtualize the complete 194-item catalogue. The frontend requests a one-minute session at login so expiry can be exercised during testing; otherwise session lifetime defaults to `SESSION_COOKIE_AGE`. When it expires, the frontend returns to sign-in without replacing the current route.
 
 A stock correction first receives a successful DummyJSON `PUT`, then upserts the durable MongoDB override. If persistence fails, the API returns an error rather than claiming the count was saved. List and detail reads merge available overrides. Every error uses `{ "error": { "code": string, "message": string } }`.
+
+`POST /api/products/bulk-corrections` accepts one to 200 `{ "productId", "stock" }` entries. Each correction retains the same upstream-then-persistence ordering as the individual endpoint. Processing continues after an item fails, and the response reports per-item outcomes plus succeeded and failed totals.
 
 ## Decision log
 

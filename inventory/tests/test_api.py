@@ -7,7 +7,7 @@ import pytest
 from django.core.management import call_command
 from django.test import Client
 
-from inventory.models import User
+from inventory.models import LoginEvent, User
 from inventory.upstream import DummyJsonClient, UpstreamError
 
 
@@ -53,6 +53,10 @@ def test_login_accepts_username_or_email(identifier: str, user: User) -> None:
     assert response.json()["username"] == "ward.user"
     assert 0 < client.session.get_expiry_age() <= 60
     assert client.get("/api/auth/me").json()["email"] == "ward.user@example.com"
+    event = LoginEvent.objects.get(user=user)
+    assert event.username == "ward.user"
+    assert event.ip_address == "127.0.0.1"
+    assert event.occurred_at is not None
 
 
 @pytest.mark.django_db
@@ -68,6 +72,7 @@ def test_invalid_login_does_not_create_a_session(user: User) -> None:
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "invalid_credentials"
     assert client.get("/api/auth/me").status_code == 401
+    assert not LoginEvent.objects.exists()
 
 
 @pytest.mark.django_db
@@ -117,6 +122,46 @@ def test_stock_update_persists_override_and_returns_it(browser: Client) -> None:
     assert response.status_code == 200
     assert response.json()["stock"] == 19
     save.assert_called_once_with(7, 19)
+
+
+def test_bulk_corrections_reports_partial_results(browser: Client) -> None:
+    with (
+        patch(
+            "inventory.views.client.request",
+            side_effect=[{"id": 7, "stock": 3}, UpstreamError(500, "failed")],
+        ),
+        patch("inventory.views.repository.save") as save,
+    ):
+        response = browser.post(
+            "/api/products/bulk-corrections",
+            {
+                "corrections": [
+                    {"productId": 7, "stock": 19},
+                    {"productId": 8, "stock": 21},
+                    {"productId": 9, "stock": -1},
+                ]
+            },
+            content_type="application/json",
+        )
+
+    assert response.status_code == 200
+    assert response.json()["summary"] == {"total": 3, "succeeded": 1, "failed": 2}
+    assert [result["status"] for result in response.json()["results"]] == [
+        "success",
+        "failure",
+        "failure",
+    ]
+    save.assert_called_once_with(7, 19)
+
+
+def test_bulk_corrections_requires_a_session() -> None:
+    response = Client().post(
+        "/api/products/bulk-corrections",
+        {"corrections": [{"productId": 7, "stock": 19}]},
+        content_type="application/json",
+    )
+
+    assert response.status_code == 401
 
 
 @pytest.mark.django_db

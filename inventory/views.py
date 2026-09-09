@@ -12,7 +12,7 @@ from rest_framework.decorators import api_view
 from rest_framework.request import Request
 from rest_framework.response import Response
 
-from .models import User
+from .models import LoginEvent, User
 from .repository import repository
 from .upstream import UpstreamError, client
 
@@ -91,6 +91,12 @@ def login(request: Request) -> Response:
     django_login(request._request, user)
     if isinstance(expires_in_mins, int) and not isinstance(expires_in_mins, bool):
         request._request.session.set_expiry(max(1, expires_in_mins) * 60)
+    LoginEvent.objects.create(
+        user=user,
+        username=user.username,
+        ip_address=request.META.get("REMOTE_ADDR") or None,
+        user_agent=request.META.get("HTTP_USER_AGENT", "")[:512],
+    )
     return Response(user_payload(user))
 
 
@@ -135,7 +141,7 @@ def products(request: Request) -> Response:
         return denied
     try:
         page = max(1, int(request.query_params.get("page", "1")))
-        limit = min(24, max(1, int(request.query_params.get("limit", "12"))))
+        limit = min(200, max(1, int(request.query_params.get("limit", "12"))))
     except ValueError:
         return error_response("invalid_pagination", "Page and limit must be numbers", 400)
     query = request.query_params.get("q", "").strip()
@@ -187,6 +193,91 @@ def products(request: Request) -> Response:
         assert isinstance(payload, dict)
         result = {**payload, "products": overlay_stocks(list(payload.get("products", [])))}
     return Response(result)
+
+
+@csrf_protect
+@api_view(["POST"])
+def bulk_corrections(request: Request) -> Response:
+    if denied := authentication_required(request):
+        return denied
+    corrections = request.data.get("corrections")
+    if not isinstance(corrections, list) or not 1 <= len(corrections) <= 200:
+        return error_response(
+            "invalid_corrections", "Provide between 1 and 200 stock corrections", 400
+        )
+
+    results: list[dict[str, Any]] = []
+    seen: set[int] = set()
+    for correction in corrections:
+        product_id = correction.get("productId") if isinstance(correction, dict) else None
+        stock = correction.get("stock") if isinstance(correction, dict) else None
+        if (
+            isinstance(product_id, bool)
+            or not isinstance(product_id, int)
+            or product_id <= 0
+            or product_id in seen
+            or isinstance(stock, bool)
+            or not isinstance(stock, int)
+            or not 0 <= stock <= 1_000_000
+        ):
+            results.append(
+                {
+                    "productId": product_id,
+                    "stock": stock,
+                    "status": "failure",
+                    "error": {
+                        "code": "invalid_correction",
+                        "message": (
+                            "Each product must appear once with a whole stock count "
+                            "from 0 to 1,000,000"
+                        ),
+                    },
+                }
+            )
+            continue
+        seen.add(product_id)
+        try:
+            catalogue_request("PUT", f"/products/{product_id}", json={"stock": stock})
+            repository.save(product_id, stock)
+        except UpstreamError as exc:
+            results.append(
+                {
+                    "productId": product_id,
+                    "stock": stock,
+                    "status": "failure",
+                    "error": {"code": "upstream_error", "message": exc.message},
+                }
+            )
+        except RuntimeError as exc:
+            results.append(
+                {
+                    "productId": product_id,
+                    "stock": stock,
+                    "status": "failure",
+                    "error": {"code": "persistence_error", "message": str(exc)},
+                }
+            )
+        else:
+            results.append(
+                {
+                    "productId": product_id,
+                    "stock": stock,
+                    "status": "success",
+                    "error": None,
+                }
+            )
+
+    succeeded = sum(result["status"] == "success" for result in results)
+    return Response(
+        {
+            "results": results,
+            "summary": {
+                "total": len(results),
+                "succeeded": succeeded,
+                "failed": len(results) - succeeded,
+            },
+        }
+    )
 
 
 @csrf_protect

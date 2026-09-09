@@ -10,5 +10,6 @@ urlpatterns = [
     path("auth/logout", views.logout),
     path("categories", views.categories),
     path("products", views.products),
+    path("products/bulk-corrections", views.bulk_corrections),
     path("products/<int:product_id>", views.product_detail),
 ]
