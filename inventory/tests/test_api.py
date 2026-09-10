@@ -101,6 +101,17 @@ def test_azure_app_service_hostname_is_allowed() -> None:
     assert response.wsgi_request.is_secure()
 
 
+def test_deployed_frontend_origin_receives_credentialed_cors_headers(settings: Any) -> None:
+    origin = "https://savannah-assessment-pk.netlify.app"
+    settings.CORS_ALLOWED_ORIGINS = [origin]
+
+    response = Client().get("/api/auth/me", HTTP_ORIGIN=origin)
+
+    assert response.status_code == 401
+    assert response.headers["Access-Control-Allow-Origin"] == origin
+    assert response.headers["Access-Control-Allow-Credentials"] == "true"
+
+
 def test_upstream_500_is_normalized_and_recoverable(browser: Client) -> None:
     with patch("inventory.views.client.request", side_effect=UpstreamError(500, "failed")):
         response = browser.get("/api/products")
