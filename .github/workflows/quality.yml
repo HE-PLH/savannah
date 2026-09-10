@@ -37,7 +37,7 @@ jobs:
         run: python -m pip install -r requirements-dev.txt
 
       - name: Install Node.js tooling
-        run: npm ci
+        run: npm ci --registry=https://registry.npmjs.org/ --replace-registry-host=always
 
       - name: Check formatting
         run: npm run format:check
