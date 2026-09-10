@@ -8,7 +8,16 @@ load_dotenv(BASE_DIR / ".env")
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "development-only-secret")
 DEBUG = os.getenv("DJANGO_DEBUG", "false").lower() == "true"
-ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+ALLOWED_HOSTS = [
+    host.strip()
+    for host in os.getenv("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+    if host.strip()
+]
+AZURE_HOSTNAME = os.getenv(
+    "WEBSITE_HOSTNAME", "savannah-g3fjc3g7hjfgf7c2.austriaeast-01.azurewebsites.net"
+).strip()
+if AZURE_HOSTNAME and AZURE_HOSTNAME not in ALLOWED_HOSTS:
+    ALLOWED_HOSTS.append(AZURE_HOSTNAME)
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -65,6 +74,7 @@ SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_COOKIE_AGE = int(os.getenv("SESSION_COOKIE_AGE", "3600"))
 SESSION_SAVE_EVERY_REQUEST = False
 SECURE_SSL_REDIRECT = os.getenv("SECURE_SSL_REDIRECT", "false").lower() == "true"
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "0"))
 SECURE_HSTS_INCLUDE_SUBDOMAINS = SECURE_HSTS_SECONDS > 0
 SECURE_HSTS_PRELOAD = SECURE_HSTS_SECONDS > 0

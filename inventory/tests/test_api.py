@@ -89,6 +89,18 @@ def test_catalogue_requires_a_session() -> None:
     assert response.json()["error"]["code"] == "authentication_required"
 
 
+def test_azure_app_service_hostname_is_allowed() -> None:
+    response = Client().get(
+        "/api/products",
+        HTTP_HOST="savannah-g3fjc3g7hjfgf7c2.austriaeast-01.azurewebsites.net",
+        HTTP_X_FORWARDED_PROTO="https",
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "authentication_required"
+    assert response.wsgi_request.is_secure()
+
+
 def test_upstream_500_is_normalized_and_recoverable(browser: Client) -> None:
     with patch("inventory.views.client.request", side_effect=UpstreamError(500, "failed")):
         response = browser.get("/api/products")
