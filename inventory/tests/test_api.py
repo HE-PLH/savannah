@@ -91,13 +91,13 @@ def test_catalogue_requires_a_session() -> None:
 
 def test_azure_app_service_hostname_is_allowed() -> None:
     response = Client().get(
-        "/api/products",
+        "/",
         HTTP_HOST="savannah-g3fjc3g7hjfgf7c2.austriaeast-01.azurewebsites.net",
         HTTP_X_FORWARDED_PROTO="https",
     )
 
-    assert response.status_code == 401
-    assert response.json()["error"]["code"] == "authentication_required"
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "service": "savannah-backend"}
     assert response.wsgi_request.is_secure()
 
 
